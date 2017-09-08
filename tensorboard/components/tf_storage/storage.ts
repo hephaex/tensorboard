@@ -56,7 +56,7 @@ export let DISAMBIGUATOR = 'disambiguator';
 /**
  * The (string) name for the run of the selected dataset in the graph dashboard.
  */
-export let SELECTED_DATASET = 'selected_dataset';
+export const SELECTED_DATASET = 'selected_dataset';
 
 /**
  * Return a string stored in URI or localStorage.
