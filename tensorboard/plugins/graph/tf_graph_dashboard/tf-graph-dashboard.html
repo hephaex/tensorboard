@@ -136,7 +136,7 @@ import {compareTagNames} from "../vz-sorting/sorting.js";
 import {getRouter} from "../tf-backend/router.js";
 import {addParams} from "../tf-backend/urlPathHelpers.js";
 import {queryEncoder} from "../tf-backend/urlPathHelpers.js";
-import {getString, setString, SELECTED_DATASET} from "../tf-storage/storage.js";
+import * as storage from '../tf-storage/storage.js';
 
 Polymer({
   is: 'tf-graph-dashboard',
@@ -200,7 +200,17 @@ Polymer({
       value: true,  // TODO(@chihuahua): Reconcile this setting with Health Pills.
       readOnly: true,
     },
-    _selectedDataset: Number,
+    run: {
+      type: String,
+      notify: true,
+      value: storage.getStringInitializer(
+          storage.RUN, /*default=*/'', /*useLocalStorage=*/false),
+      observer: '_runObserver',
+    },
+    _selectedDataset: {
+      type: Number,
+      notify: true,
+    },
   },
   listeners: {
     'node-toggle-expand': '_handleNodeToggleExpand',
@@ -209,7 +219,8 @@ Polymer({
     '_maybeFetchHealthPills(_debuggerDataEnabled, allStepsModeEnabled, ' +
         'specificHealthPillStep, _selectedNode)',
     '_maybeInitializeDashboard(_isAttached)',
-    '_selectedDatasetChanged(_selectedDataset)',
+    '_determineSelectedDataset(_datasets, run)',
+    '_updateSelectedDatasetName(_datasets, _selectedDataset)',
   ],
   attached: function() {
     this.set('_isAttached', true);
@@ -239,6 +250,8 @@ Polymer({
 
     this._maybeFetchHealthPills();
   },
+  _runObserver: storage.getStringObserver(
+      storage.RUN, /*default=*/'', /*useLocalStorage=*/false),
   _fetchGraphRuns() {
     return this._requestManager.request(
         getRouter().pluginRoute('graphs', '/runs'));
@@ -318,30 +331,32 @@ Polymer({
             })),
         }));
         this.set('_datasets', datasets);
-
-        // If the URL specifies a dataset, load it.
-        const selectedDatasetRun = getString(
-            SELECTED_DATASET, /*useLocalStorage=*/ false);
-        if (selectedDatasetRun) {
-          let datasetFound = false;
-          for (let i = 0; i < datasets.length; i++) {
-            if (datasets[i].name === selectedDatasetRun) {
-              // We found the dataset with this run name. Load it.
-              this.set('_selectedDataset', i);
-              datasetFound = true;
-              break;
-            }
-          }
-          if (!datasetFound) {
-            // Tell the user if the dataset cannot be found to avoid misleading
-            // the user.
-            const dialog = this.$$('#error-dialog');
-            dialog.textContent =
-                `No dataset named "${selectedDatasetRun}" could be found.`;
-            dialog.open();
-          }
-        }
       });
+  },
+  _determineSelectedDataset(datasets, run) {
+    // By default, load the first dataset.
+    if (!run) {
+      // By default, load the first dataset. 
+      this.set('_selectedDataset', 0);
+      return;
+    }
+    
+    // If the URL specifies a dataset, load it.
+    const dataset = datasets.findIndex(d => d.name === run);
+    if (dataset === -1) {
+      // Tell the user if the dataset cannot be found to avoid misleading
+      // the user.
+      const dialog = this.$$('#error-dialog');
+      dialog.textContent =
+          `No dataset named "${run}" could be found.`;
+      dialog.open();
+      return;
+    }
+
+    this.set('_selectedDataset', dataset);
+  },
+  _updateSelectedDatasetName(datasets, selectedDataset) {
+    this.set('run', datasets[selectedDataset].name);
   },
   _requestHealthPills: function() {
     this.set('_areHealthPillsLoading', true);
@@ -423,13 +438,6 @@ Polymer({
   _handleNodeToggleExpand: function() {
     // Nodes were toggled. We may need to request health pills for more nodes.
     this._maybeFetchHealthPills();
-  },
-  _selectedDatasetChanged(selectedDataset) {
-    // When the selected dataset changes, change the URL. 
-    setString(
-        SELECTED_DATASET,
-        this._datasets[selectedDataset].name,
-        /*useLocalStorage=*/ false);
   },
   _healthPillsToggledOnChanged: function(healthPillsToggledOn) {
     if (healthPillsToggledOn) {
